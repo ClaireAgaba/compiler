@@ -476,13 +476,218 @@ function renderTokens(view) {
 
 function renderAST(view) {
     const ast = compiledData.ast;
+    const metadata = compiledData.parsing_metadata || {};
+    const strategy = metadata.strategy || 'Top-Down Recursive Descent (LL(1))';
+    const grammarRules = metadata.grammar_rules || [];
+    const maxDepth = metadata.max_recursion_depth || 0;
+    const productionRules = [
+        { lhs: 'program', rhs: 'function* EOF', impl: 'parse()' },
+        { lhs: 'function', rhs: '"func" IDENT "(" params? ")" "->" type block', impl: '_parse_function()' },
+        { lhs: 'params', rhs: 'param ("," param)* | epsilon', impl: '_parse_params()' },
+        { lhs: 'param', rhs: 'IDENT ":" type', impl: '_parse_param()' },
+        { lhs: 'type', rhs: '"int" | "float" | "bool" | "string" | "void" | type "[" INT "]"', impl: '_parse_type()' },
+        { lhs: 'block', rhs: '"{" statement* "}"', impl: '_parse_block()' },
+        { lhs: 'statement', rhs: 'var_decl | if_stmt | while_stmt | for_stmt | return_stmt | print_stmt | assignment | expr_stmt', impl: '_parse_statement()' },
+        { lhs: 'var_decl', rhs: '"var" IDENT ":" type ("=" expr)? ";"', impl: '_parse_var_decl()' },
+        { lhs: 'if_stmt', rhs: '"if" "(" expr ")" block ("else" ("if" ... | block))?', impl: '_parse_if()' },
+        { lhs: 'while_stmt', rhs: '"while" "(" expr ")" block', impl: '_parse_while()' },
+        { lhs: 'for_stmt', rhs: '"for" "(" (var_decl | ";") expr? ";" assignment? ")" block', impl: '_parse_for()' },
+        { lhs: 'return_stmt', rhs: '"return" expr? ";"', impl: '_parse_return()' },
+        { lhs: 'print_stmt', rhs: '"print" "(" expr ")" ";"', impl: '_parse_print()' },
+        { lhs: 'expr', rhs: 'or_expr', impl: '_parse_expression()' },
+        { lhs: 'or_expr', rhs: 'and_expr ("or" and_expr)*', impl: '_parse_or()' },
+        { lhs: 'and_expr', rhs: 'equality ("and" equality)*', impl: '_parse_and()' },
+        { lhs: 'equality', rhs: 'comparison (("==" | "!=") comparison)*', impl: '_parse_equality()' },
+        { lhs: 'comparison', rhs: 'term (("<" | ">" | "<=" | ">=") term)*', impl: '_parse_comparison()' },
+        { lhs: 'term', rhs: 'factor (("+" | "-") factor)*', impl: '_parse_term()' },
+        { lhs: 'factor', rhs: 'unary (("*" | "/" | "%") unary)*', impl: '_parse_factor()' },
+        { lhs: 'unary', rhs: '("not" | "-") unary | primary', impl: '_parse_unary()' },
+        { lhs: 'primary', rhs: 'NUMBER | STRING | BOOL | IDENT | "(" expr ")" | input_call', impl: '_parse_primary()' }
+    ];
+
+    const firstFollowRows = [
+        {
+            nt: 'program',
+            first: '{ func }',
+            follow: '{ EOF }'
+        },
+        {
+            nt: 'function',
+            first: '{ func }',
+            follow: '{ func, EOF }'
+        },
+        {
+            nt: 'statement',
+            first: '{ var, if, while, for, return, IDENT, (, -, not, INT_LIT, FLOAT_LIT, STRING_LIT, true, false }',
+            follow: '{ var, if, while, for, return, IDENT, }, EOF }'
+        },
+        {
+            nt: 'expr',
+            first: '{ IDENT, (, -, not, INT_LIT, FLOAT_LIT, STRING_LIT, true, false }',
+            follow: '{ ;, ), ], , }'
+        },
+        {
+            nt: 'term',
+            first: '{ IDENT, (, -, not, INT_LIT, FLOAT_LIT, STRING_LIT, true, false }',
+            follow: '{ +, -, <, >, <=, >=, ==, !=, and, or, ;, ), ], , }'
+        },
+        {
+            nt: 'factor',
+            first: '{ IDENT, (, -, not, INT_LIT, FLOAT_LIT, STRING_LIT, true, false }',
+            follow: '{ *, /, %, +, -, <, >, <=, >=, ==, !=, and, or, ;, ), ], , }'
+        }
+    ];
+
+
+    // Runtime grammar rules applied (for this specific input)
+    let rulesHtml = '<div class="parser-table-wrap">';
+    rulesHtml += '<table class="parser-table">';
+    rulesHtml += '<thead><tr>';
+    rulesHtml += '<th>Rule</th>';
+    rulesHtml += '<th>Production</th>';
+    rulesHtml += '<th>Token</th>';
+    rulesHtml += '<th>Depth</th>';
+    rulesHtml += '</tr></thead><tbody>';
+
+    grammarRules.forEach((rule, i) => {
+        const ruleShort = rule.rule.replace('_parse_', '');
+        rulesHtml += `<tr>
+            <td><span class="parser-pill">${escapeHtml(ruleShort)}</span></td>
+            <td><span class="parser-subtle">${escapeHtml(rule.production)}</span></td>
+            <td><span class="parser-subtle">'${escapeHtml(rule.token)}'</span></td>
+            <td><span class="parser-subtle">${rule.depth}</span></td>
+        </tr>`;
+    });
+
+    rulesHtml += '</tbody></table></div>';
+
+    // Static production rules + implementation mapping
+    let productionHtml = '<div class="parser-table-wrap">';
+    productionHtml += '<table class="parser-table">';
+    productionHtml += '<thead><tr>';
+    productionHtml += '<th>Production</th>';
+    productionHtml += '<th>Implemented In</th>';
+    productionHtml += '</tr></thead><tbody>';
+
+    productionRules.forEach((p, i) => {
+        productionHtml += `<tr>
+            <td><span class="parser-nt">${escapeHtml(p.lhs)}</span> -> <span class="parser-subtle">${escapeHtml(p.rhs)}</span></td>
+            <td><span class="parser-pill">${escapeHtml(p.impl)}</span></td>
+        </tr>`;
+    });
+
+    productionHtml += '</tbody></table></div>';
+
+    let firstFollowHtml = '<div class="parser-table-wrap">';
+    firstFollowHtml += '<table class="parser-table">';
+    firstFollowHtml += '<thead><tr>';
+    firstFollowHtml += '<th>Non-terminal</th>';
+    firstFollowHtml += '<th>FIRST</th>';
+    firstFollowHtml += '<th>FOLLOW</th>';
+    firstFollowHtml += '</tr></thead><tbody>';
+
+    firstFollowRows.forEach((row, i) => {
+        firstFollowHtml += `<tr>
+            <td><span class="parser-pill">${escapeHtml(row.nt)}</span></td>
+            <td><span class="parser-subtle">${escapeHtml(row.first)}</span></td>
+            <td><span class="parser-subtle">${escapeHtml(row.follow)}</span></td>
+        </tr>`;
+    });
+
+    firstFollowHtml += '</tbody></table></div>';
+
+    const parseTreeText = [
+        'Expression: a + b * c',
+        '',
+        'Parse Tree (Grammar-Oriented)',
+        'expr',
+        '├── term',
+        '│   └── IDENT(a)',
+        '├── PLUS(+)',
+        '└── term',
+        '    ├── factor',
+        '    │   └── IDENT(b)',
+        '    ├── STAR(*)',
+        '    └── factor',
+        '        └── IDENT(c)'
+    ].join('\n');
+
+    const astTreeText = [
+        'Expression: a + b * c',
+        '',
+        'AST (Semantics-Oriented)',
+        'BinaryOp(+)',
+        '├── Identifier(a)',
+        '└── BinaryOp(*)',
+        '    ├── Identifier(b)',
+        '    └── Identifier(c)'
+    ].join('\n');
+
+    const parseTreeAstHtml = `
+        <div class="parser-compare-grid">
+            <div class="parser-compare-card">
+                <h5 class="parser-compare-title">Parse Tree</h5>
+                <p class="parser-compare-note">Shows all grammar symbols and intermediate non-terminals exactly as expanded by productions.</p>
+                <div class="code-block parser-mini-block">${escapeHtml(parseTreeText)}</div>
+            </div>
+            <div class="parser-compare-card">
+                <h5 class="parser-compare-title">Abstract Syntax Tree (AST)</h5>
+                <p class="parser-compare-note">Compresses syntax and keeps only the essential semantic structure used by later compiler stages.</p>
+                <div class="code-block parser-mini-block">${escapeHtml(astTreeText)}</div>
+            </div>
+        </div>
+    `;
+
+    // Parser strategy section
+    let strategyHtml = `
+        <div class="parser-callout">
+            <h4>Parser Strategy</h4>
+            <p>
+                <strong>Method:</strong> ${escapeHtml(strategy)}<br/>
+                <strong>Direction:</strong> Top-down (start from root, work toward leaves)<br/>
+                <strong>Lookahead:</strong> LL(1) — one token lookahead for decision making<br/>
+                <strong>Approach:</strong> Recursive descent — each grammar rule is a parser function<br/>
+                <strong>Grammar Complexity:</strong> ${grammarRules.length} rules applied, max recursion depth: ${maxDepth}
+            </p>
+        </div>
+    `;
+
     view.innerHTML = `
         <div class="section-header">
             <span class="section-icon">🌳</span>
-            <h3>Stage 2: Parsing (Abstract Syntax Tree)</h3>
+            <h3>Stage 2: Parsing (Syntax Analysis)</h3>
         </div>
-        <p class="section-desc">The parser reads the token stream using recursive descent (top-down) and builds an Abstract Syntax Tree — a hierarchical representation of the program's structure.</p>
-        <div class="code-block">${highlightAST(escapeHtml(ast))}</div>
+        <p class="section-desc">The parser reads the token stream and builds an Abstract Syntax Tree (AST) — a hierarchical representation of the program's structure. It uses a <strong>top-down recursive descent</strong> strategy with <strong>LL(1)</strong> lookahead to predictively parse the tokens.</p>
+        
+        ${strategyHtml}
+
+        <div class="parser-section">
+            <h4 class="parser-section-title">Grammar Rules Applied for This Program (${grammarRules.length} total)</h4>
+            ${rulesHtml}
+        </div>
+
+        <div class="parser-section">
+            <h4 class="parser-section-title">Production Rules and Implementation Mapping</h4>
+            <p class="parser-section-note">Each grammar production from syntax analysis is implemented by a recursive parser method in our code.</p>
+            ${productionHtml}
+        </div>
+
+        <div class="parser-section">
+            <h4 class="parser-section-title">FIRST and FOLLOW Sets (LL(1) Preparation)</h4>
+            <p class="parser-section-note">These sets are used to construct a table-driven predictive parser. They show which tokens can start a non-terminal (FIRST) and which tokens can appear after it (FOLLOW).</p>
+            ${firstFollowHtml}
+        </div>
+
+        <div class="parser-section">
+            <h4 class="parser-section-title">Parse Tree vs AST Comparison</h4>
+            <p class="parser-section-note">Both structures represent the same expression, but they serve different purposes in syntax analysis and compilation.</p>
+            ${parseTreeAstHtml}
+        </div>
+
+        <div style="margin-bottom: 16px;">
+            <h4 style="margin-bottom: 8px; color: var(--text-secondary); font-size: 0.9rem;">Abstract Syntax Tree</h4>
+            <div class="code-block">${highlightAST(escapeHtml(ast))}</div>
+        </div>
     `;
 }
 

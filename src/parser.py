@@ -33,6 +33,11 @@ class Parser:
         self.pos = 0
         self.errors: List[ParseError] = []
 
+        # Parsing metadata for visualizer
+        self.grammar_rules_applied = []
+        self.derivation_trace = []
+        self.call_stack_depth = 0
+        self.max_depth = 0
     # ──────────────────────────── Token-level helpers ───────────────────────────
 
     def _current(self) -> Token:
@@ -70,7 +75,9 @@ class Parser:
     def _expect(self, token_type: TokenType, message: str = "") -> Token:
         """Consume current token if it matches, otherwise raise ParseError."""
         if self._peek() == token_type:
-            return self._advance()
+            token = self._advance()
+            self._log_derivation(f"match {token_type.name} -> '{token.value}'")
+            return token
         token = self._current()
         if not message:
             message = f"Expected {token_type.name}, got {token.type.name} ('{token.value}')"
@@ -101,12 +108,45 @@ class Parser:
 
     # ──────────────────────────── MAIN ENTRY POINT ─────────────────────────────
 
+    # ──────────────────────────── PARSING METADATA ────────────────────────────
+
+    def _log_rule(self, rule_name: str, production: str):
+        """Log a grammar rule application."""
+        self.grammar_rules_applied.append({
+            'rule': rule_name,
+            'production': production,
+            'token': self._current().value,
+            'line': self._current().line,
+            'depth': self.call_stack_depth
+        })
+
+    def _log_derivation(self, step: str):
+        """Log a derivation step."""
+        self.derivation_trace.append({
+            'step': step,
+            'token_pos': self.pos,
+            'token': self._current().value,
+            'depth': self.call_stack_depth
+        })
+
+    def _enter_rule(self, rule_name: str):
+        """Enter a parsing rule (increment call stack)."""
+        self.call_stack_depth += 1
+        self.max_depth = max(self.max_depth, self.call_stack_depth)
+
+    def _exit_rule(self, rule_name: str):
+        """Exit a parsing rule (decrement call stack)."""
+        self.call_stack_depth = max(0, self.call_stack_depth - 1)
+
+    # ──────────────────────────── MAIN ENTRY POINT ─────────────────────────────
     def parse(self) -> ProgramNode:
         """
         Parse the token stream into an AST.
 
         Grammar: program → function* EOF
         """
+        self._enter_rule('parse')
+        self._log_rule('program', 'function* EOF')
         program = ProgramNode(line=1, column=1)
 
         while not self._check(TokenType.EOF):
@@ -121,6 +161,16 @@ class Parser:
             error_messages = "\n".join(e.format() for e in self.errors)
             raise ParseError(f"Parse errors found:\n{error_messages}")
 
+        self._exit_rule('parse')
+        # Attach parsing metadata for visualizer
+        program.parsing_metadata = {
+            'strategy': 'Top-Down Recursive Descent (LL(1))',
+            'grammar_rules': self.grammar_rules_applied,
+            'derivation_trace': self.derivation_trace,
+            'max_recursion_depth': self.max_depth,
+            'total_rules_applied': len(self.grammar_rules_applied),
+            'total_derivation_steps': len(self.derivation_trace)
+        }
         return program
 
     # ──────────────────────────── DECLARATIONS ─────────────────────────────────
@@ -130,6 +180,8 @@ class Parser:
         Parse a function declaration.
         Grammar: function → "func" IDENT "(" params? ")" "->" type block
         """
+        self._enter_rule('_parse_function')
+        self._log_rule('function', 'func IDENT ( params? ) -> type block')
         func_token = self._expect(TokenType.FUNC, "Expected 'func' keyword")
         name_token = self._expect(TokenType.IDENTIFIER, "Expected function name")
 
@@ -142,6 +194,7 @@ class Parser:
 
         body = self._parse_block()
 
+        self._exit_rule('_parse_function')
         return FunctionNode(
             name=name_token.value,
             params=params,
@@ -243,6 +296,8 @@ class Parser:
         Parse a block of statements.
         Grammar: block → "{" statement* "}"
         """
+        self._enter_rule('_parse_block')
+        self._log_rule('block', '{ statement* }')
         brace = self._expect(TokenType.LBRACE, "Expected '{'")
         statements = []
 
@@ -256,6 +311,7 @@ class Parser:
 
         self._expect(TokenType.RBRACE, "Expected '}'")
 
+        self._exit_rule('_parse_block')
         return BlockNode(
             statements=statements,
             line=brace.line,
@@ -268,26 +324,44 @@ class Parser:
         Grammar: statement → var_decl | if_stmt | while_stmt | for_stmt
                            | return_stmt | print_stmt | assignment | expr_stmt
         """
+        self._enter_rule('_parse_statement')
+        self._log_rule('statement', 'var_decl | if_stmt | while_stmt | for_stmt | return_stmt | print_stmt | assignment | expr_stmt')
         if self._check(TokenType.VAR):
-            return self._parse_var_decl()
+            result = self._parse_var_decl()
+            self._exit_rule('_parse_statement')
+            return result
         elif self._check(TokenType.IF):
-            return self._parse_if()
+            result = self._parse_if()
+            self._exit_rule('_parse_statement')
+            return result
         elif self._check(TokenType.WHILE):
-            return self._parse_while()
+            result = self._parse_while()
+            self._exit_rule('_parse_statement')
+            return result
         elif self._check(TokenType.FOR):
-            return self._parse_for()
+            result = self._parse_for()
+            self._exit_rule('_parse_statement')
+            return result
         elif self._check(TokenType.RETURN):
-            return self._parse_return()
+            result = self._parse_return()
+            self._exit_rule('_parse_statement')
+            return result
         elif self._check(TokenType.IDENTIFIER) and self._current().value == 'print':
-            return self._parse_print()
+            result = self._parse_print()
+            self._exit_rule('_parse_statement')
+            return result
         else:
-            return self._parse_assignment_or_expr()
+            result = self._parse_assignment_or_expr()
+            self._exit_rule('_parse_statement')
+            return result
 
     def _parse_if(self) -> IfNode:
         """
         Parse an if statement.
         Grammar: if_stmt → "if" "(" expr ")" block ("else" ("if" ... | block))?
         """
+        self._enter_rule('_parse_if')
+        self._log_rule('if_stmt', 'if ( expr ) block (else (if ... | block))?')
         if_token = self._advance()  # consume 'if'
         self._expect(TokenType.LPAREN, "Expected '(' after 'if'")
         condition = self._parse_expression()
@@ -307,31 +381,37 @@ class Parser:
             else:
                 else_block = self._parse_block()
 
-        return IfNode(
+        result = IfNode(
             condition=condition,
             then_block=then_block,
             else_block=else_block,
             line=if_token.line,
             column=if_token.column,
         )
+        self._exit_rule('_parse_if')
+        return result
 
     def _parse_while(self) -> WhileNode:
         """
         Parse a while loop.
         Grammar: while_stmt → "while" "(" expr ")" block
         """
+        self._enter_rule('_parse_while')
+        self._log_rule('while_stmt', 'while ( expr ) block')
         while_token = self._advance()  # consume 'while'
         self._expect(TokenType.LPAREN, "Expected '(' after 'while'")
         condition = self._parse_expression()
         self._expect(TokenType.RPAREN, "Expected ')' after condition")
         body = self._parse_block()
 
-        return WhileNode(
+        result = WhileNode(
             condition=condition,
             body=body,
             line=while_token.line,
             column=while_token.column,
         )
+        self._exit_rule('_parse_while')
+        return result
 
     def _parse_for(self) -> ForNode:
         """
@@ -387,23 +467,29 @@ class Parser:
         Parse a return statement.
         Grammar: return_stmt → "return" expr? ";"
         """
+        self._enter_rule('_parse_return')
+        self._log_rule('return_stmt', 'return expr? ;')
         ret_token = self._advance()  # consume 'return'
         value = None
         if not self._check(TokenType.SEMICOLON):
             value = self._parse_expression()
         self._expect(TokenType.SEMICOLON, "Expected ';' after return")
 
-        return ReturnNode(
+        result = ReturnNode(
             value=value,
             line=ret_token.line,
             column=ret_token.column,
         )
+        self._exit_rule('_parse_return')
+        return result
 
     def _parse_print(self) -> PrintNode:
         """
         Parse a print statement.
         Grammar: print_stmt → "print" "(" expr ")" ";"
         """
+        self._enter_rule('_parse_print')
+        self._log_rule('print_stmt', 'print ( expr ) ;')
         print_token = self._expect(TokenType.IDENTIFIER, "Expected 'print'")
         if print_token.value != 'print':
             raise ParseError("Expected 'print'", print_token.line, print_token.column)
@@ -412,11 +498,13 @@ class Parser:
         self._expect(TokenType.RPAREN, "Expected ')' after print argument")
         self._expect(TokenType.SEMICOLON, "Expected ';' after print statement")
 
-        return PrintNode(
+        result = PrintNode(
             value=value,
             line=print_token.line,
             column=print_token.column,
         )
+        self._exit_rule('_parse_print')
+        return result
 
     def _parse_assignment_or_expr(self) -> ASTNode:
         """
@@ -443,10 +531,16 @@ class Parser:
 
     def _parse_expression(self) -> ASTNode:
         """Entry point for expression parsing — starts at lowest precedence."""
-        return self._parse_or()
 
+        self._enter_rule('_parse_expression')
+        self._log_rule('expression', 'or_expr')
+        result = self._parse_or()
+        self._exit_rule('_parse_expression')
+        return result
     def _parse_or(self) -> ASTNode:
         """Grammar: logic_or → logic_and ("or" logic_and)*"""
+        self._enter_rule('_parse_or')
+        self._log_rule('or_expr', 'and_expr (or and_expr)*')
         left = self._parse_and()
         while self._match(TokenType.OR):
             right = self._parse_and()
@@ -454,6 +548,7 @@ class Parser:
                 op="or", left=left, right=right,
                 line=left.line, column=left.column
             )
+        self._exit_rule('_parse_or')
         return left
 
     def _parse_and(self) -> ASTNode:

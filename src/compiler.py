@@ -75,6 +75,9 @@ class Compiler:
         ast = parser.parse()
         result['ast'] = ast
 
+        # Extract parsing metadata for visualizer
+        if hasattr(ast, 'parsing_metadata'):
+            result['parsing_metadata'] = ast.parsing_metadata
         # Stage 3: Semantic Analysis
         analyzer = SemanticAnalyzer()
         analyzer.analyze(ast)
@@ -118,6 +121,8 @@ class Compiler:
 
         # AST
         result['ast'] = stages['ast'].pretty_print()
+        if 'parsing_metadata' in stages:
+            result['parsing_metadata'] = stages['parsing_metadata']
 
         # Symbol Table
         result['symbol_table'] = stages['symbol_table'].pretty_print()

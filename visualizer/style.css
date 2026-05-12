@@ -551,6 +551,133 @@ body {
 .code-block .label { color: var(--accent-orange); font-weight: 600; }
 .code-block .comment { color: var(--text-muted); font-style: italic; }
 
+/* Stage 2 parser pedagogy blocks */
+.parser-callout {
+    background: linear-gradient(180deg, rgba(88, 166, 255, 0.12), rgba(88, 166, 255, 0.05));
+    border: 1px solid rgba(88, 166, 255, 0.35);
+    border-left: 4px solid var(--accent-blue);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    margin-bottom: 16px;
+}
+
+.parser-callout h4 {
+    font-size: 0.82rem;
+    margin-bottom: 6px;
+    color: var(--accent-blue);
+}
+
+.parser-callout p {
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    line-height: 1.55;
+}
+
+.parser-section {
+    margin-bottom: 16px;
+}
+
+.parser-section-title {
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.parser-section-note {
+    margin: 0 0 8px 0;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+.parser-table-wrap {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: auto;
+    max-height: 360px;
+}
+
+.parser-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+.parser-table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    text-align: left;
+    padding: 8px 10px;
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-size: 0.66rem;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.parser-table td {
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: top;
+}
+
+.parser-table tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.parser-pill {
+    color: var(--accent-blue);
+    font-weight: 600;
+}
+
+.parser-nt {
+    color: var(--accent-green);
+    font-weight: 600;
+}
+
+.parser-subtle {
+    color: var(--text-secondary);
+}
+
+.parser-compare-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.parser-compare-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 12px;
+}
+
+.parser-compare-title {
+    color: var(--text-primary);
+    font-size: 0.82rem;
+    margin-bottom: 6px;
+}
+
+.parser-compare-note {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    line-height: 1.45;
+    margin-bottom: 10px;
+}
+
+.parser-mini-block {
+    margin: 0;
+    padding: 12px;
+    font-size: 0.74rem;
+    line-height: 1.55;
+    min-height: 220px;
+}
+
 /* Section headers in output */
 .section-header {
     display: flex;
@@ -774,4 +901,20 @@ body {
     .stage-arrow { display: none; }
     .stage-name { display: none; }
     .stage-tab { padding: 6px 8px; }
+
+    .parser-table-wrap {
+        max-height: 300px;
+    }
+
+    .parser-table {
+        font-size: 0.73rem;
+    }
+
+    .parser-compare-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .parser-mini-block {
+        min-height: 0;
+    }
 }
