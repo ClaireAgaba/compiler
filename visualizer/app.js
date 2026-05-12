@@ -116,6 +116,29 @@ func main() -> void {
 func main() -> void {
     var x: int = "hello";
     print(x);
+}`,
+
+    redundantCodeDemo: `// Redundant Code Demo
+// Good for showing optimization opportunities
+
+func main() -> void {
+    var a: int = 2 + 3 * 4;
+    var b: int = a * 1;
+    var c: int = b + 0;
+    var d: float = (10 - 5) + (8 / 2);
+
+    if (false) {
+        print(999);
+    }
+
+    var x: int = 7;
+    var y: int = 7;
+    var z: int = x + y;
+    var w: int = x + y;
+
+    print(c);
+    print(d);
+    print(z);
 }`
 };
 
