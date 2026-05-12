@@ -14,7 +14,7 @@
     <header id="app-header">
         <div class="header-left">
             <div class="logo">
-                <span class="logo-icon">⚙</span>
+
                 <h1>MiniLang <span class="highlight">Compiler</span></h1>
             </div>
             <span class="badge">All 7 Stages</span>
@@ -27,9 +27,10 @@
                 <option value="calculator">Calculator</option>
                 <option value="simple">Simple Demo</option>
                 <option value="inputDemo">Input Demo</option>
+                <option value="semanticErrorDemo">Semantic Error Demo</option>
             </select>
             <button id="btn-compile" class="btn btn-primary">
-                <span class="btn-icon">▶</span> Compile & Run
+                Compile & Run
             </button>
         </div>
     </header>
@@ -39,7 +40,6 @@
         <!-- Source Editor -->
         <section id="editor-panel" class="panel">
             <div class="panel-header">
-                <span class="panel-icon">📝</span>
                 <h2>Source Code</h2>
                 <span class="panel-badge">.mini</span>
             </div>
@@ -57,7 +57,6 @@
         <!-- Stage Tabs & Output -->
         <section id="output-panel" class="panel">
             <div class="panel-header">
-                <span class="panel-icon">🔍</span>
                 <h2>Compiler Stages</h2>
             </div>
 
@@ -102,7 +101,7 @@
             <!-- Stage Content -->
             <div id="stage-content">
                 <div id="stage-placeholder" class="placeholder">
-                    <div class="placeholder-icon">⚙</div>
+                    <div class="placeholder-icon"></div>
                     <p>Write some MiniLang code and click <strong>Compile & Run</strong></p>
                     <p class="placeholder-sub">Or load an example from the dropdown above</p>
                 </div>

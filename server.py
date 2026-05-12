@@ -15,6 +15,9 @@ from urllib.parse import urlparse, parse_qs
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from src.compiler import Compiler
+from src.lexer import Lexer
+from src.parser import Parser
+from src.semantic import SemanticAnalyzer
 from src.vm import VM
 from src.errors import CompilerError
 
@@ -55,11 +58,14 @@ class VisualizerHandler(SimpleHTTPRequestHandler):
             self._send_json(result)
 
         except CompilerError as e:
-            self._send_json({
+            partial = self._build_partial_result(source)
+            partial.update({
                 'success': False,
+                'partial': True,
                 'error': str(e),
                 'error_type': type(e).__name__,
             })
+            self._send_json(partial)
         except Exception as e:
             self._send_json({
                 'success': False,
@@ -91,21 +97,101 @@ class VisualizerHandler(SimpleHTTPRequestHandler):
             result['output'] = output
             result['trace'] = vm.trace_log[-100:]
             result['steps'] = vm.step_count
+            result['output_note'] = ''
+
+            if len(output) == 0:
+                has_print_instruction = any(
+                    str(instr).startswith('PRINT')
+                    for instr in stages.get('bytecode', [])
+                )
+                if has_print_instruction:
+                    result['output_note'] = (
+                        'Program ran successfully, but no PRINT instructions were executed '
+                        '(for example, due to control flow).'
+                    )
+                else:
+                    result['output_note'] = (
+                        'Program ran successfully. No output was produced because the code '
+                        'does not print anything.'
+                    )
 
             self._send_json(result)
 
         except CompilerError as e:
-            self._send_json({
+            partial = self._build_partial_result(source)
+            partial.update({
                 'success': False,
+                'partial': True,
                 'error': str(e),
                 'error_type': type(e).__name__,
             })
+            self._send_json(partial)
         except Exception as e:
             self._send_json({
                 'success': False,
                 'error': str(e),
                 'error_type': 'InternalError',
             })
+
+    def _serialize_tokens(self, tokens):
+        """Convert lexer tokens to JSON-safe dictionaries."""
+        return [
+            {
+                'type': t.type.name,
+                'value': repr(t.value) if isinstance(t.value, str) else str(t.value),
+                'line': t.line,
+                'column': t.column,
+            }
+            for t in tokens
+        ]
+
+    def _build_partial_result(self, source: str):
+        """Compile incrementally and return whatever stages succeeded."""
+        result = {
+            'tokens': [],
+            'ast': 'Unavailable',
+            'symbol_table': 'Unavailable',
+            'tac': [],
+            'optimized_tac': [],
+            'optimization_report': [],
+            'bytecode': [],
+            'functions': {},
+            'output': [],
+            'trace': [],
+            'steps': 0,
+            'failed_stage': 'unknown',
+        }
+
+        # Stage 1: lexical analysis
+        try:
+            tokens = Lexer(source).tokenize()
+            result['tokens'] = self._serialize_tokens(tokens)
+        except CompilerError:
+            result['failed_stage'] = 'lexical'
+            return result
+
+        # Stage 2: parsing
+        try:
+            parser = Parser(tokens)
+            ast = parser.parse()
+            result['ast'] = ast.pretty_print()
+            if hasattr(ast, 'parsing_metadata'):
+                result['parsing_metadata'] = ast.parsing_metadata
+        except CompilerError:
+            result['failed_stage'] = 'syntax'
+            return result
+
+        # Stage 3: semantic analysis
+        analyzer = SemanticAnalyzer()
+        try:
+            analyzer.analyze(ast)
+            result['symbol_table'] = analyzer.symbol_table.pretty_print()
+            result['failed_stage'] = 'none'
+        except CompilerError:
+            result['symbol_table'] = analyzer.symbol_table.pretty_print()
+            result['failed_stage'] = 'semantic'
+
+        return result
 
     def _send_json(self, data):
         """Send a JSON response."""

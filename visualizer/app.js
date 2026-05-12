@@ -108,6 +108,14 @@ func main() -> void {
 func main() -> void {
     var x: int = input();
     print(x * 5 - 2);
+}`,
+
+    semanticErrorDemo: `// Semantic Error Demo
+// Valid tokens + valid syntax, but invalid semantics
+
+func main() -> void {
+    var x: int = "hello";
+    print(x);
 }`
 };
 
@@ -128,6 +136,31 @@ const pipeStages = document.querySelectorAll('.pipe-stage');
 
 let currentStage = 'tokens';
 let compiledData = null;
+const STAGE_ORDER = ['tokens', 'ast', 'symbols', 'tac', 'optimized', 'bytecode', 'output'];
+let maxReachableStageIndex = STAGE_ORDER.length - 1;
+
+function stageIndex(stage) {
+    return STAGE_ORDER.indexOf(stage);
+}
+
+function updateReachableStageLimit(data) {
+    if (!data || !data.partial) {
+        maxReachableStageIndex = STAGE_ORDER.length - 1;
+        return;
+    }
+
+    const failureToStage = {
+        lexical: 'tokens',
+        syntax: 'ast',
+        semantic: 'symbols',
+        ir: 'tac',
+        optimization: 'optimized',
+        codegen: 'bytecode',
+        runtime: 'output'
+    };
+    const stopStage = failureToStage[data.failed_stage] || 'symbols';
+    maxReachableStageIndex = stageIndex(stopStage);
+}
 
 // ════════════════════════════════════════════════════════════════
 // INITIALIZATION
@@ -204,7 +237,7 @@ async function compile() {
 
     // UI feedback
     btnCompile.classList.add('compiling');
-    btnCompile.innerHTML = '<span class="btn-icon compiling-indicator">⚙</span> Compiling...';
+    btnCompile.innerHTML = 'Compiling...';
     errorDisplay.style.display = 'none';
 
     try {
@@ -218,9 +251,27 @@ async function compile() {
 
         if (data.success) {
             compiledData = data;
+            updateReachableStageLimit(data);
             placeholder.style.display = 'none';
             renderStage(currentStage);
             updatePipelineHighlight();
+        } else if (data.partial) {
+            compiledData = data;
+            updateReachableStageLimit(data);
+            const failedStage = {
+                lexical: 'tokens',
+                syntax: 'ast',
+                semantic: 'symbols',
+                ir: 'tac',
+                optimization: 'optimized',
+                codegen: 'bytecode',
+                runtime: 'output'
+            }[data.failed_stage] || 'symbols';
+            currentStage = failedStage;
+            placeholder.style.display = 'none';
+            renderStage(currentStage);
+            updatePipelineHighlight();
+            showError(data.error, data.error_type, false);
         } else {
             showError(data.error, data.error_type);
         }
@@ -228,17 +279,19 @@ async function compile() {
         showError(`Connection error: ${err.message}\n\nMake sure the server is running:\n  python server.py`, 'NetworkError');
     } finally {
         btnCompile.classList.remove('compiling');
-        btnCompile.innerHTML = '<span class="btn-icon">▶</span> Compile & Run';
+        btnCompile.innerHTML = 'Compile & Run';
     }
 }
 
-function showError(message, type) {
+function showError(message, type, hideViews = true) {
     errorDisplay.style.display = 'block';
-    errorDisplay.innerHTML = `<div class="error-header">❌ ${type || 'Error'}</div>${escapeHtml(message)}`;
+    errorDisplay.innerHTML = `<div class="error-header">${type || 'Error'}</div>${escapeHtml(message)}`;
 
-    // Hide stage views
-    document.querySelectorAll('.stage-view').forEach(v => v.style.display = 'none');
-    placeholder.style.display = 'none';
+    if (hideViews) {
+        // Hide stage views for full failures; partial failures still show completed stages
+        document.querySelectorAll('.stage-view').forEach(v => v.style.display = 'none');
+        placeholder.style.display = 'none';
+    }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -246,6 +299,15 @@ function showError(message, type) {
 // ════════════════════════════════════════════════════════════════
 
 function switchStage(stage) {
+    if (compiledData && stageIndex(stage) > maxReachableStageIndex) {
+        showError(
+            `Compilation stopped at stage ${maxReachableStageIndex + 1} (${STAGE_ORDER[maxReachableStageIndex]}). Later stages are unavailable until this error is fixed.`,
+            'CompilationStopped',
+            false
+        );
+        return;
+    }
+
     currentStage = stage;
 
     // Update tab styling
@@ -263,8 +325,16 @@ function switchStage(stage) {
 }
 
 function updatePipelineHighlight() {
+    stageTabs.forEach(tab => {
+        const idx = stageIndex(tab.dataset.stage);
+        tab.classList.toggle('active', tab.dataset.stage === currentStage);
+        tab.classList.toggle('disabled', compiledData && idx > maxReachableStageIndex);
+    });
+
     pipeStages.forEach(stage => {
         stage.classList.toggle('active', stage.dataset.stage === currentStage);
+        const idx = stageIndex(stage.dataset.stage);
+        stage.classList.toggle('disabled', compiledData && idx > maxReachableStageIndex);
     });
 }
 
@@ -275,7 +345,9 @@ function updatePipelineHighlight() {
 function renderStage(stage) {
     // Hide all views
     document.querySelectorAll('.stage-view').forEach(v => v.style.display = 'none');
-    errorDisplay.style.display = 'none';
+    if (!(compiledData && compiledData.partial)) {
+        errorDisplay.style.display = 'none';
+    }
     placeholder.style.display = 'none';
 
     const view = document.getElementById(`stage-${stage}`);
@@ -408,7 +480,7 @@ function renderTokens(view) {
 
     let html = `
         <div class="section-header">
-            <span class="section-icon">🔤</span>
+
             <h3>Stage 1: Lexical Analysis</h3>
         </div>
         <p class="section-desc">The lexer scans source code character-by-character and produces a stream of tokens. Every token belongs to one of five groups: keyword, identifier, literal, operator, or delimiter.</p>
@@ -477,69 +549,8 @@ function renderTokens(view) {
 function renderAST(view) {
     const ast = compiledData.ast;
     const metadata = compiledData.parsing_metadata || {};
-    const strategy = metadata.strategy || 'Top-Down Recursive Descent (LL(1))';
     const grammarRules = metadata.grammar_rules || [];
-    const maxDepth = metadata.max_recursion_depth || 0;
-    const productionRules = [
-        { lhs: 'program', rhs: 'function* EOF', impl: 'parse()' },
-        { lhs: 'function', rhs: '"func" IDENT "(" params? ")" "->" type block', impl: '_parse_function()' },
-        { lhs: 'params', rhs: 'param ("," param)* | epsilon', impl: '_parse_params()' },
-        { lhs: 'param', rhs: 'IDENT ":" type', impl: '_parse_param()' },
-        { lhs: 'type', rhs: '"int" | "float" | "bool" | "string" | "void" | type "[" INT "]"', impl: '_parse_type()' },
-        { lhs: 'block', rhs: '"{" statement* "}"', impl: '_parse_block()' },
-        { lhs: 'statement', rhs: 'var_decl | if_stmt | while_stmt | for_stmt | return_stmt | print_stmt | assignment | expr_stmt', impl: '_parse_statement()' },
-        { lhs: 'var_decl', rhs: '"var" IDENT ":" type ("=" expr)? ";"', impl: '_parse_var_decl()' },
-        { lhs: 'if_stmt', rhs: '"if" "(" expr ")" block ("else" ("if" ... | block))?', impl: '_parse_if()' },
-        { lhs: 'while_stmt', rhs: '"while" "(" expr ")" block', impl: '_parse_while()' },
-        { lhs: 'for_stmt', rhs: '"for" "(" (var_decl | ";") expr? ";" assignment? ")" block', impl: '_parse_for()' },
-        { lhs: 'return_stmt', rhs: '"return" expr? ";"', impl: '_parse_return()' },
-        { lhs: 'print_stmt', rhs: '"print" "(" expr ")" ";"', impl: '_parse_print()' },
-        { lhs: 'expr', rhs: 'or_expr', impl: '_parse_expression()' },
-        { lhs: 'or_expr', rhs: 'and_expr ("or" and_expr)*', impl: '_parse_or()' },
-        { lhs: 'and_expr', rhs: 'equality ("and" equality)*', impl: '_parse_and()' },
-        { lhs: 'equality', rhs: 'comparison (("==" | "!=") comparison)*', impl: '_parse_equality()' },
-        { lhs: 'comparison', rhs: 'term (("<" | ">" | "<=" | ">=") term)*', impl: '_parse_comparison()' },
-        { lhs: 'term', rhs: 'factor (("+" | "-") factor)*', impl: '_parse_term()' },
-        { lhs: 'factor', rhs: 'unary (("*" | "/" | "%") unary)*', impl: '_parse_factor()' },
-        { lhs: 'unary', rhs: '("not" | "-") unary | primary', impl: '_parse_unary()' },
-        { lhs: 'primary', rhs: 'NUMBER | STRING | BOOL | IDENT | "(" expr ")" | input_call', impl: '_parse_primary()' }
-    ];
 
-    const firstFollowRows = [
-        {
-            nt: 'program',
-            first: '{ func }',
-            follow: '{ EOF }'
-        },
-        {
-            nt: 'function',
-            first: '{ func }',
-            follow: '{ func, EOF }'
-        },
-        {
-            nt: 'statement',
-            first: '{ var, if, while, for, return, IDENT, (, -, not, INT_LIT, FLOAT_LIT, STRING_LIT, true, false }',
-            follow: '{ var, if, while, for, return, IDENT, }, EOF }'
-        },
-        {
-            nt: 'expr',
-            first: '{ IDENT, (, -, not, INT_LIT, FLOAT_LIT, STRING_LIT, true, false }',
-            follow: '{ ;, ), ], , }'
-        },
-        {
-            nt: 'term',
-            first: '{ IDENT, (, -, not, INT_LIT, FLOAT_LIT, STRING_LIT, true, false }',
-            follow: '{ +, -, <, >, <=, >=, ==, !=, and, or, ;, ), ], , }'
-        },
-        {
-            nt: 'factor',
-            first: '{ IDENT, (, -, not, INT_LIT, FLOAT_LIT, STRING_LIT, true, false }',
-            follow: '{ *, /, %, +, -, <, >, <=, >=, ==, !=, and, or, ;, ), ], , }'
-        }
-    ];
-
-
-    // Runtime grammar rules applied (for this specific input)
     let rulesHtml = '<div class="parser-table-wrap">';
     rulesHtml += '<table class="parser-table">';
     rulesHtml += '<thead><tr>';
@@ -561,127 +572,16 @@ function renderAST(view) {
 
     rulesHtml += '</tbody></table></div>';
 
-    // Static production rules + implementation mapping
-    let productionHtml = '<div class="parser-table-wrap">';
-    productionHtml += '<table class="parser-table">';
-    productionHtml += '<thead><tr>';
-    productionHtml += '<th>Production</th>';
-    productionHtml += '<th>Implemented In</th>';
-    productionHtml += '</tr></thead><tbody>';
-
-    productionRules.forEach((p, i) => {
-        productionHtml += `<tr>
-            <td><span class="parser-nt">${escapeHtml(p.lhs)}</span> -> <span class="parser-subtle">${escapeHtml(p.rhs)}</span></td>
-            <td><span class="parser-pill">${escapeHtml(p.impl)}</span></td>
-        </tr>`;
-    });
-
-    productionHtml += '</tbody></table></div>';
-
-    let firstFollowHtml = '<div class="parser-table-wrap">';
-    firstFollowHtml += '<table class="parser-table">';
-    firstFollowHtml += '<thead><tr>';
-    firstFollowHtml += '<th>Non-terminal</th>';
-    firstFollowHtml += '<th>FIRST</th>';
-    firstFollowHtml += '<th>FOLLOW</th>';
-    firstFollowHtml += '</tr></thead><tbody>';
-
-    firstFollowRows.forEach((row, i) => {
-        firstFollowHtml += `<tr>
-            <td><span class="parser-pill">${escapeHtml(row.nt)}</span></td>
-            <td><span class="parser-subtle">${escapeHtml(row.first)}</span></td>
-            <td><span class="parser-subtle">${escapeHtml(row.follow)}</span></td>
-        </tr>`;
-    });
-
-    firstFollowHtml += '</tbody></table></div>';
-
-    const parseTreeText = [
-        'Expression: a + b * c',
-        '',
-        'Parse Tree (Grammar-Oriented)',
-        'expr',
-        '├── term',
-        '│   └── IDENT(a)',
-        '├── PLUS(+)',
-        '└── term',
-        '    ├── factor',
-        '    │   └── IDENT(b)',
-        '    ├── STAR(*)',
-        '    └── factor',
-        '        └── IDENT(c)'
-    ].join('\n');
-
-    const astTreeText = [
-        'Expression: a + b * c',
-        '',
-        'AST (Semantics-Oriented)',
-        'BinaryOp(+)',
-        '├── Identifier(a)',
-        '└── BinaryOp(*)',
-        '    ├── Identifier(b)',
-        '    └── Identifier(c)'
-    ].join('\n');
-
-    const parseTreeAstHtml = `
-        <div class="parser-compare-grid">
-            <div class="parser-compare-card">
-                <h5 class="parser-compare-title">Parse Tree</h5>
-                <p class="parser-compare-note">Shows all grammar symbols and intermediate non-terminals exactly as expanded by productions.</p>
-                <div class="code-block parser-mini-block">${escapeHtml(parseTreeText)}</div>
-            </div>
-            <div class="parser-compare-card">
-                <h5 class="parser-compare-title">Abstract Syntax Tree (AST)</h5>
-                <p class="parser-compare-note">Compresses syntax and keeps only the essential semantic structure used by later compiler stages.</p>
-                <div class="code-block parser-mini-block">${escapeHtml(astTreeText)}</div>
-            </div>
-        </div>
-    `;
-
-    // Parser strategy section
-    let strategyHtml = `
-        <div class="parser-callout">
-            <h4>Parser Strategy</h4>
-            <p>
-                <strong>Method:</strong> ${escapeHtml(strategy)}<br/>
-                <strong>Direction:</strong> Top-down (start from root, work toward leaves)<br/>
-                <strong>Lookahead:</strong> LL(1) — one token lookahead for decision making<br/>
-                <strong>Approach:</strong> Recursive descent — each grammar rule is a parser function<br/>
-                <strong>Grammar Complexity:</strong> ${grammarRules.length} rules applied, max recursion depth: ${maxDepth}
-            </p>
-        </div>
-    `;
-
     view.innerHTML = `
         <div class="section-header">
-            <span class="section-icon">🌳</span>
+
             <h3>Stage 2: Parsing (Syntax Analysis)</h3>
         </div>
-        <p class="section-desc">The parser reads the token stream and builds an Abstract Syntax Tree (AST) — a hierarchical representation of the program's structure. It uses a <strong>top-down recursive descent</strong> strategy with <strong>LL(1)</strong> lookahead to predictively parse the tokens.</p>
-        
-        ${strategyHtml}
+        <p class="section-desc">Demo view: parser trace and resulting AST.</p>
 
         <div class="parser-section">
-            <h4 class="parser-section-title">Grammar Rules Applied for This Program (${grammarRules.length} total)</h4>
+            <h4 class="parser-section-title">Parser Trace (${grammarRules.length} steps)</h4>
             ${rulesHtml}
-        </div>
-
-        <div class="parser-section">
-            <h4 class="parser-section-title">Production Rules and Implementation Mapping</h4>
-            <p class="parser-section-note">Each grammar production from syntax analysis is implemented by a recursive parser method in our code.</p>
-            ${productionHtml}
-        </div>
-
-        <div class="parser-section">
-            <h4 class="parser-section-title">FIRST and FOLLOW Sets (LL(1) Preparation)</h4>
-            <p class="parser-section-note">These sets are used to construct a table-driven predictive parser. They show which tokens can start a non-terminal (FIRST) and which tokens can appear after it (FOLLOW).</p>
-            ${firstFollowHtml}
-        </div>
-
-        <div class="parser-section">
-            <h4 class="parser-section-title">Parse Tree vs AST Comparison</h4>
-            <p class="parser-section-note">Both structures represent the same expression, but they serve different purposes in syntax analysis and compilation.</p>
-            ${parseTreeAstHtml}
         </div>
 
         <div style="margin-bottom: 16px;">
@@ -695,13 +595,18 @@ function renderAST(view) {
 
 function renderSymbols(view) {
     const table = compiledData.symbol_table;
+
     view.innerHTML = `
         <div class="section-header">
-            <span class="section-icon">🔍</span>
+
             <h3>Stage 3: Semantic Analysis</h3>
         </div>
-        <p class="section-desc">The semantic analyzer walks the AST, builds a symbol table, checks types, resolves names, and ensures the program is meaningful — not just syntactically correct.</p>
-        <div class="code-block">${highlightSymbols(escapeHtml(table))}</div>
+        <p class="section-desc">Demo view: semantic analysis result and symbol table.</p>
+
+        <div class="parser-section">
+            <h4 class="parser-section-title">Symbol Table (Built in Semantic Stage)</h4>
+            <div class="code-block">${highlightSymbols(escapeHtml(table))}</div>
+        </div>
     `;
 }
 
@@ -711,7 +616,7 @@ function renderTAC(view) {
     const tac = compiledData.tac;
     view.innerHTML = `
         <div class="section-header">
-            <span class="section-icon">📋</span>
+
             <h3>Stage 4: Intermediate Code Generation (TAC)</h3>
         </div>
         <p class="section-desc">Three-Address Code is a linear intermediate representation where each instruction has at most three operands. This bridges the gap between the high-level AST and low-level bytecode.</p>
@@ -733,13 +638,13 @@ function renderOptimized(view) {
     const tac = compiledData.tac;
 
     let reportHtml = report.map(r => {
-        const icon = r.includes('0 ') ? '⚪' : '✅';
+        const icon = r.includes('0 ') ? '-' : '+';
         return `<div class="opt-item"><span class="opt-icon">${icon}</span>${escapeHtml(r)}</div>`;
     }).join('');
 
     view.innerHTML = `
         <div class="section-header">
-            <span class="section-icon">⚡</span>
+
             <h3>Stage 5: Code Optimization</h3>
         </div>
         <p class="section-desc">The optimizer applies multiple passes to improve the TAC: constant folding, constant propagation, dead code elimination, common subexpression elimination, and strength reduction.</p>
@@ -787,7 +692,7 @@ function renderBytecode(view) {
 
     view.innerHTML = `
         <div class="section-header">
-            <span class="section-icon">💾</span>
+
             <h3>Stage 6: Code Generation (Bytecode)</h3>
         </div>
         <p class="section-desc">The code generator translates optimized TAC into bytecode for our stack-based virtual machine. Each instruction operates on an operand stack.</p>
@@ -809,6 +714,16 @@ function renderBytecode(view) {
 
 function renderOutput(view) {
     const output = compiledData.output || [];
+    const outputNote = compiledData.output_note || '';
+    const hasPrintInstruction = (compiledData.bytecode || []).some(item => {
+        if (typeof item === 'string') {
+            return item.startsWith('PRINT');
+        }
+        return String(item.instruction || '').startsWith('PRINT');
+    });
+    const fallbackNoOutputNote = hasPrintInstruction
+        ? 'Program ran successfully, but no PRINT instruction was executed (for example, due to control flow).'
+        : 'Program ran successfully. No output was produced because the code does not print anything.';
     const trace = compiledData.trace || [];
     const steps = compiledData.steps || 0;
 
@@ -822,7 +737,7 @@ function renderOutput(view) {
 
     view.innerHTML = `
         <div class="section-header">
-            <span class="section-icon">🖥️</span>
+
             <h3>Stage 7: VM Execution (Runtime Environment)</h3>
         </div>
         <p class="section-desc">The stack-based Virtual Machine executes the bytecode. It maintains an operand stack for computation, a call stack for function calls, and a heap for arrays.</p>
@@ -838,6 +753,9 @@ function renderOutput(view) {
         </div>
         <h4 style="margin-bottom:8px; color: var(--text-secondary); font-size: 0.8rem;">Program Output</h4>
         <div class="code-block" style="border-color: var(--accent-green); background: rgba(63, 185, 80, 0.05);">${outputHtml}</div>
+        ${output.length === 0 ? `
+            <div style="margin-top: 10px; color: var(--text-secondary); font-size: 0.82rem; line-height: 1.5;">${escapeHtml(outputNote || fallbackNoOutputNote)}</div>
+        ` : ''}
         ${trace.length > 0 ? `
             <h4 style="margin: 16px 0 8px; color: var(--text-secondary); font-size: 0.8rem;">Execution Trace (last 30 steps)</h4>
             <div class="code-block">${traceHtml}</div>
