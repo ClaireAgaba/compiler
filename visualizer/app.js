@@ -550,6 +550,18 @@ function renderAST(view) {
     const ast = compiledData.ast;
     const metadata = compiledData.parsing_metadata || {};
     const grammarRules = metadata.grammar_rules || [];
+    const isSyntaxFailure = compiledData.partial && compiledData.failed_stage === 'syntax';
+    const statusText = isSyntaxFailure ? 'FAILED' : 'PASSED';
+    const hasAst = ast && ast !== 'Unavailable';
+    const rawError = (compiledData.error || '').trim();
+    const errorLines = rawError.split('\n').map(s => s.trim()).filter(Boolean);
+    const mainReason = errorLines.length > 0 ? errorLines[errorLines.length - 1] : '';
+    const meaningText = isSyntaxFailure
+        ? `Lexing passed, but parsing failed: ${mainReason || 'invalid token order/grammar mismatch'}.`
+        : 'Parsing passed and the AST was built successfully.';
+    const nextStepText = isSyntaxFailure
+        ? 'Fix the syntax shown in the error message, then re-run.'
+        : 'Proceed to Stage 3 for semantic checks.';
 
     let rulesHtml = '<div class="parser-table-wrap">';
     rulesHtml += '<table class="parser-table">';
@@ -577,7 +589,17 @@ function renderAST(view) {
 
             <h3>Stage 2: Parsing (Syntax Analysis)</h3>
         </div>
-        <p class="section-desc">Demo view: parser trace and resulting AST.</p>
+        <p class="section-desc">Parses token stream into an Abstract Syntax Tree.</p>
+
+        <div class="parser-section" style="margin-bottom: 12px;">
+            <h4 class="parser-section-title">Run Summary</h4>
+            <div class="code-block" style="line-height: 1.6;">
+Status: ${statusText}
+AST built: ${hasAst ? 'yes' : 'no'}
+Meaning: ${escapeHtml(meaningText)}
+Next step: ${escapeHtml(nextStepText)}
+            </div>
+        </div>
 
         <div class="parser-section">
             <h4 class="parser-section-title">Parser Trace (${grammarRules.length} steps)</h4>
@@ -595,13 +617,45 @@ function renderAST(view) {
 
 function renderSymbols(view) {
     const table = compiledData.symbol_table;
+    const isSemanticFailure = compiledData.partial && compiledData.failed_stage === 'semantic';
+    const statusText = isSemanticFailure ? 'FAILED' : 'PASSED';
+    const hasAst = compiledData.ast && compiledData.ast !== 'Unavailable';
+    const rawError = (compiledData.error || '').trim();
+    const errorLines = rawError.split('\n').map(s => s.trim()).filter(Boolean);
+    const mainReason = errorLines.length > 0 ? errorLines[errorLines.length - 1] : '';
+    const demoExplanation = isSemanticFailure
+        ? `Syntax already passed (AST was built), but semantic checks failed: ${mainReason || 'type/name validation failed'}.`
+        : 'Semantic checks passed, so the program can continue to TAC generation.';
+    const nextStepText = isSemanticFailure
+        ? 'Fix the declaration/type issue shown below, then re-run compilation.'
+        : 'Proceed to Stage 4 to show generated TAC.';
+    const semanticResultText = isSemanticFailure
+        ? `Semantic check failed: ${mainReason || 'type/name validation failed.'}`
+        : 'Semantic check passed: identifiers and types are valid.';
 
     view.innerHTML = `
         <div class="section-header">
 
             <h3>Stage 3: Semantic Analysis</h3>
         </div>
-        <p class="section-desc">Demo view: semantic analysis result and symbol table.</p>
+        <p class="section-desc">Checks names, declarations, and type correctness after parsing.</p>
+
+        <div class="parser-section" style="margin-bottom: 12px;">
+            <h4 class="parser-section-title">Semantic Result</h4>
+            <div class="code-block" style="line-height: 1.6;">
+${escapeHtml(semanticResultText)}
+            </div>
+        </div>
+
+        <div class="parser-section" style="margin-bottom: 12px;">
+            <h4 class="parser-section-title">Run Summary</h4>
+            <div class="code-block" style="line-height: 1.6;">
+Status: ${statusText}
+AST built: ${hasAst ? 'yes' : 'no'}
+Meaning: ${escapeHtml(demoExplanation)}
+Next step: ${escapeHtml(nextStepText)}
+            </div>
+        </div>
 
         <div class="parser-section">
             <h4 class="parser-section-title">Symbol Table (Built in Semantic Stage)</h4>
@@ -715,6 +769,7 @@ function renderBytecode(view) {
 function renderOutput(view) {
     const output = compiledData.output || [];
     const outputNote = compiledData.output_note || '';
+    const isRuntimeFailure = compiledData.partial && compiledData.failed_stage === 'runtime';
     const hasPrintInstruction = (compiledData.bytecode || []).some(item => {
         if (typeof item === 'string') {
             return item.startsWith('PRINT');
@@ -724,6 +779,16 @@ function renderOutput(view) {
     const fallbackNoOutputNote = hasPrintInstruction
         ? 'Program ran successfully, but no PRINT instruction was executed (for example, due to control flow).'
         : 'Program ran successfully. No output was produced because the code does not print anything.';
+    const statusText = isRuntimeFailure ? 'FAILED' : 'PASSED';
+    const rawError = (compiledData.error || '').trim();
+    const errorLines = rawError.split('\n').map(s => s.trim()).filter(Boolean);
+    const mainReason = errorLines.length > 0 ? errorLines[errorLines.length - 1] : '';
+    const meaningText = isRuntimeFailure
+        ? `Compilation succeeded, but execution failed: ${mainReason || 'runtime failure'}.`
+        : (output.length === 0 ? (outputNote || fallbackNoOutputNote) : 'Program executed successfully and produced output.');
+    const nextStepText = isRuntimeFailure
+        ? 'Fix the runtime condition/input and run again.'
+        : 'Demo complete. You can inspect the trace for execution flow details.';
     const trace = compiledData.trace || [];
     const steps = compiledData.steps || 0;
 
@@ -740,7 +805,18 @@ function renderOutput(view) {
 
             <h3>Stage 7: VM Execution (Runtime Environment)</h3>
         </div>
-        <p class="section-desc">The stack-based Virtual Machine executes the bytecode. It maintains an operand stack for computation, a call stack for function calls, and a heap for arrays.</p>
+        <p class="section-desc">Runs bytecode on the VM and reports final behavior.</p>
+
+        <div class="parser-section" style="margin-bottom: 12px;">
+            <h4 class="parser-section-title">Run Summary</h4>
+            <div class="code-block" style="line-height: 1.6;">
+Status: ${statusText}
+Output lines: ${output.length}
+Meaning: ${escapeHtml(meaningText)}
+Next step: ${escapeHtml(nextStepText)}
+            </div>
+        </div>
+
         <div class="stats-row">
             <div class="stat-card">
                 <div class="stat-value">${steps}</div>
