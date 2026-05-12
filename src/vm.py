@@ -134,6 +134,15 @@ class VM:
 
     # ──────────────────────────── EXECUTION ENGINE ─────────────────────────────
 
+    def _ensure_numeric_operand(self, value: Any, operation: str) -> Any:
+        """Ensure an operand is numeric before arithmetic execution."""
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise VMError(
+                f"Runtime input for '{operation}' must be a number. "
+                f"Enter raw values like 7 or 3.5 in Runtime Inputs, not expressions like 'x*5-2' or '7-2'."
+            )
+        return value
+
     def _execute(self, instr: BytecodeInstruction):
         """Execute a single bytecode instruction."""
         op = instr.opcode
@@ -161,26 +170,35 @@ class VM:
 
         elif op == OpCode.SUB:
             b, a = self._pop(), self._pop()
+            a = self._ensure_numeric_operand(a, '-')
+            b = self._ensure_numeric_operand(b, '-')
             self.stack.append(a - b)
 
         elif op == OpCode.MUL:
             b, a = self._pop(), self._pop()
+            a = self._ensure_numeric_operand(a, '*')
+            b = self._ensure_numeric_operand(b, '*')
             self.stack.append(a * b)
 
         elif op == OpCode.DIV:
             b, a = self._pop(), self._pop()
+            a = self._ensure_numeric_operand(a, '/')
+            b = self._ensure_numeric_operand(b, '/')
             if b == 0:
                 raise VMError("Division by zero")
             self.stack.append(a / b if isinstance(a, float) or isinstance(b, float) else a // b)
 
         elif op == OpCode.MOD:
             b, a = self._pop(), self._pop()
+            a = self._ensure_numeric_operand(a, '%')
+            b = self._ensure_numeric_operand(b, '%')
             if b == 0:
                 raise VMError("Modulo by zero")
             self.stack.append(a % b)
 
         elif op == OpCode.NEG:
             a = self._pop()
+            a = self._ensure_numeric_operand(a, 'unary -')
             self.stack.append(-a)
 
         elif op == OpCode.EQ:
@@ -374,6 +392,13 @@ class VM:
             raw = self.input_callback()
         else:
             raw = input(">>> ")
+
+        raw = str(raw).strip()
+
+        if raw.lower() == 'true':
+            return True
+        if raw.lower() == 'false':
+            return False
 
         # Try to parse as number
         try:

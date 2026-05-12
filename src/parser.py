@@ -45,6 +45,11 @@ class Parser:
         """Return the type of the current token."""
         return self._current().type
 
+    def _peek_token(self, offset: int = 0) -> Token:
+        """Return token at current position + offset (clamped to EOF)."""
+        index = min(self.pos + offset, len(self.tokens) - 1)
+        return self.tokens[index]
+
     def _advance(self) -> Token:
         """Consume and return the current token."""
         token = self._current()
@@ -87,8 +92,10 @@ class Parser:
             if self._peek() in (
                 TokenType.FUNC, TokenType.VAR, TokenType.IF,
                 TokenType.WHILE, TokenType.FOR, TokenType.RETURN,
-                TokenType.PRINT, TokenType.RBRACE
+                TokenType.RBRACE
             ):
+                return
+            if self._peek() == TokenType.IDENTIFIER and self._current().value == 'print':
                 return
             self._advance()
 
@@ -271,7 +278,7 @@ class Parser:
             return self._parse_for()
         elif self._check(TokenType.RETURN):
             return self._parse_return()
-        elif self._check(TokenType.PRINT):
+        elif self._check(TokenType.IDENTIFIER) and self._current().value == 'print':
             return self._parse_print()
         else:
             return self._parse_assignment_or_expr()
@@ -279,7 +286,7 @@ class Parser:
     def _parse_if(self) -> IfNode:
         """
         Parse an if statement.
-        Grammar: if_stmt → "if" "(" expr ")" block ("else" block)?
+        Grammar: if_stmt → "if" "(" expr ")" block ("else" ("if" ... | block))?
         """
         if_token = self._advance()  # consume 'if'
         self._expect(TokenType.LPAREN, "Expected '(' after 'if'")
@@ -289,7 +296,16 @@ class Parser:
 
         else_block = None
         if self._match(TokenType.ELSE):
-            else_block = self._parse_block()
+            if self._check(TokenType.IF):
+                # else if → wrap the nested if in a block
+                nested_if = self._parse_if()
+                else_block = BlockNode(
+                    statements=[nested_if],
+                    line=nested_if.line,
+                    column=nested_if.column,
+                )
+            else:
+                else_block = self._parse_block()
 
         return IfNode(
             condition=condition,
@@ -388,7 +404,9 @@ class Parser:
         Parse a print statement.
         Grammar: print_stmt → "print" "(" expr ")" ";"
         """
-        print_token = self._advance()  # consume 'print'
+        print_token = self._expect(TokenType.IDENTIFIER, "Expected 'print'")
+        if print_token.value != 'print':
+            raise ParseError("Expected 'print'", print_token.line, print_token.column)
         self._expect(TokenType.LPAREN, "Expected '(' after 'print'")
         value = self._parse_expression()
         self._expect(TokenType.RPAREN, "Expected ')' after print argument")
@@ -586,10 +604,16 @@ class Parser:
         if self._match(TokenType.BOOL_LITERAL):
             return BoolNode(value=token.value, line=token.line, column=token.column)
 
-        # Input expression
-        if self._match(TokenType.INPUT):
-            self._expect(TokenType.LPAREN, "Expected '(' after 'input'")
-            self._expect(TokenType.RPAREN, "Expected ')' after 'input('")
+        # Input expression parsed contextually as identifier call: input()
+        if (
+            self._check(TokenType.IDENTIFIER)
+            and token.value == 'input'
+            and self._peek_token(1).type == TokenType.LPAREN
+            and self._peek_token(2).type == TokenType.RPAREN
+        ):
+            self._advance()  # consume 'input'
+            self._advance()  # consume '('
+            self._advance()  # consume ')'
             return InputNode(line=token.line, column=token.column)
 
         # Identifier

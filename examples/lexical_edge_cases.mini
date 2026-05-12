@@ -1,0 +1,28 @@
+// Lexical edge-case coverage demo
+// Covers: keywords, identifiers, literals, delimiters, operators, comments, escapes
+
+func main() -> void {
+    var alpha_1: int = 42;
+    var beta2: float = 3.14;
+    var flag: bool = true;
+    var message: string = "line1\nline2\t\\done\"";
+
+    // multi-character operators
+    if ((alpha_1 <= 50) and (alpha_1 != 0) or not false) {
+        print(message);
+    }
+
+    // array delimiters and assignment/operator mix
+    var arr: int[3];
+    arr[0] = alpha_1;
+    arr[1] = alpha_1 - 2;
+    arr[2] = arr[0] % 5;
+
+    // single-line and multi-line comments should be ignored
+    /* this whole block
+       must not produce any tokens */
+
+    for (var i: int = 0; i < 3; i = i + 1) {
+        print(arr[i]);
+    }
+}

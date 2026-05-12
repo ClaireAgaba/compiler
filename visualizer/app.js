@@ -100,6 +100,14 @@ func main() -> void {
     var result: int = add(x, y);
     print("Result:");
     print(result);
+}`,
+
+    inputDemo: `// Input Demo
+// Type one number into the Runtime Inputs box and compile
+
+func main() -> void {
+    var x: int = input();
+    print(x * 5 - 2);
 }`
 };
 
@@ -108,6 +116,7 @@ func main() -> void {
 // ════════════════════════════════════════════════════════════════
 
 const editor = document.getElementById('source-editor');
+const runtimeInputs = document.getElementById('runtime-inputs');
 const lineNumbers = document.getElementById('line-numbers');
 const btnCompile = document.getElementById('btn-compile');
 const exampleSelect = document.getElementById('example-select');
@@ -175,6 +184,7 @@ function loadExample() {
     const name = exampleSelect.value;
     if (name && EXAMPLES[name]) {
         editor.value = EXAMPLES[name];
+        runtimeInputs.value = name === 'inputDemo' ? '7' : '';
         updateLineNumbers();
         exampleSelect.value = '';
     }
@@ -187,6 +197,10 @@ function loadExample() {
 async function compile() {
     const source = editor.value.trim();
     if (!source) return;
+    const inputs = runtimeInputs.value
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
 
     // UI feedback
     btnCompile.classList.add('compiling');
@@ -197,7 +211,7 @@ async function compile() {
         const response = await fetch('/api/run', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ source })
+            body: JSON.stringify({ source, inputs })
         });
 
         const data = await response.json();
@@ -284,14 +298,96 @@ function renderStage(stage) {
 
 function renderTokens(view) {
     const tokens = compiledData.tokens;
+    const visibleTokens = tokens.filter(token => token.type !== 'EOF');
     const keywordTypes = ['FUNC', 'VAR', 'IF', 'ELSE', 'WHILE', 'FOR', 'RETURN',
-                          'PRINT', 'INPUT', 'TRUE', 'FALSE', 'AND', 'OR', 'NOT',
+                          'TRUE', 'FALSE', 'AND', 'OR', 'NOT',
                           'INT', 'FLOAT', 'BOOL', 'STRING', 'VOID'];
     const literalTypes = ['INTEGER_LITERAL', 'FLOAT_LITERAL', 'STRING_LITERAL', 'BOOL_LITERAL'];
     const operatorTypes = ['PLUS', 'MINUS', 'STAR', 'SLASH', 'PERCENT', 'EQ', 'NEQ',
                            'LT', 'GT', 'LTE', 'GTE', 'ASSIGN', 'ARROW'];
     const delimiterTypes = ['LPAREN', 'RPAREN', 'LBRACE', 'RBRACE', 'LBRACKET',
                             'RBRACKET', 'SEMICOLON', 'COLON', 'COMMA'];
+
+    const categoryLabels = {
+        keyword: 'Keyword',
+        identifier: 'Identifier',
+        literal: 'Literal',
+        operator: 'Operator',
+        delimiter: 'Delimiter',
+        special: 'Special'
+    };
+
+    const tokenMeanings = {
+        LPAREN: 'opening parenthesis',
+        RPAREN: 'closing parenthesis',
+        LBRACE: 'opening brace',
+        RBRACE: 'closing brace',
+        LBRACKET: 'opening bracket',
+        RBRACKET: 'closing bracket',
+        SEMICOLON: 'statement terminator',
+        COLON: 'type separator',
+        COMMA: 'separator',
+        LTE: 'less than or equal',
+        GTE: 'greater than or equal',
+        LT: 'less than',
+        GT: 'greater than',
+        EQ: 'equal comparison',
+        NEQ: 'not equal comparison',
+        ASSIGN: 'assignment',
+        ARROW: 'return type arrow'
+    };
+
+    const tokenRegexPatterns = {
+        // Keywords - matched as exact reserved words
+        FUNC: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        VAR: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        IF: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        ELSE: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        WHILE: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        FOR: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        RETURN: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        TRUE: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        FALSE: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        AND: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        OR: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        NOT: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        INT: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        FLOAT: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        BOOL: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        STRING: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        VOID: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        // Identifiers
+        IDENTIFIER: `[a-zA-Z_][a-zA-Z0-9_]*`,
+        // Literals
+        INTEGER_LITERAL: `[0-9]+`,
+        FLOAT_LITERAL: `[0-9]+\\.[0-9]+`,
+        STRING_LITERAL: `"([^"\\\\]|\\\\.)*"`,
+        BOOL_LITERAL: `true|false`,
+        // Operators
+        PLUS: `\\+`,
+        MINUS: `-`,
+        STAR: `\\*`,
+        SLASH: `/`,
+        PERCENT: `%`,
+        EQ: `==`,
+        NEQ: `!=`,
+        LT: `<`,
+        GT: `>`,
+        LTE: `<=`,
+        GTE: `>=`,
+        ASSIGN: `=`,
+        ARROW: `->`,
+        // Delimiters
+        LPAREN: `\\(`,
+        RPAREN: `\\)`,
+        LBRACE: `\\{`,
+        RBRACE: `\\}`,
+        LBRACKET: `\\[`,
+        RBRACKET: `\\]`,
+        SEMICOLON: `;`,
+        COLON: `:`,
+        COMMA: `,`
+    };
 
     function getTokenClass(type) {
         if (keywordTypes.includes(type)) return 'keyword';
@@ -302,41 +398,71 @@ function renderTokens(view) {
         return 'special';
     }
 
+    function formatTypeName(type) {
+        return type.replace(/_/g, ' ').toLowerCase();
+    }
+
+    function getTokenRegex(type) {
+        return tokenRegexPatterns[type] || '(custom)';
+    }
+
     let html = `
         <div class="section-header">
             <span class="section-icon">🔤</span>
             <h3>Stage 1: Lexical Analysis</h3>
         </div>
-        <p class="section-desc">The lexer scans source code character-by-character and produces a stream of tokens — the smallest meaningful units of the language.</p>
+        <p class="section-desc">The lexer scans source code character-by-character and produces a stream of tokens. Every token belongs to one of five groups: keyword, identifier, literal, operator, or delimiter.</p>
         <div class="stats-row">
             <div class="stat-card">
-                <div class="stat-value">${tokens.length}</div>
-                <div class="stat-label">Total Tokens</div>
+                <div class="stat-value">${visibleTokens.length}</div>
+                <div class="stat-label">Visible Tokens</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value">${tokens.filter(t => keywordTypes.includes(t.type)).length}</div>
+                <div class="stat-value">${visibleTokens.filter(t => keywordTypes.includes(t.type)).length}</div>
                 <div class="stat-label">Keywords</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value">${tokens.filter(t => t.type === 'IDENTIFIER').length}</div>
+                <div class="stat-value">${visibleTokens.filter(t => t.type === 'IDENTIFIER').length}</div>
                 <div class="stat-label">Identifiers</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value">${tokens.filter(t => literalTypes.includes(t.type)).length}</div>
+                <div class="stat-value">${visibleTokens.filter(t => literalTypes.includes(t.type)).length}</div>
                 <div class="stat-label">Literals</div>
             </div>
+            <div class="stat-card">
+                <div class="stat-value">${visibleTokens.filter(t => operatorTypes.includes(t.type)).length}</div>
+                <div class="stat-label">Operators</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value">${visibleTokens.filter(t => delimiterTypes.includes(t.type)).length}</div>
+                <div class="stat-label">Delimiters</div>
+            </div>
         </div>
+        <div class="token-legend">
+            <div class="legend-item"><span class="token-type keyword">Keyword</span><span>Reserved words such as func, if, while, int</span></div>
+            <div class="legend-item"><span class="token-type identifier">Identifier</span><span>User-defined names such as add, a, result</span></div>
+            <div class="legend-item"><span class="token-type literal">Literal</span><span>Constant values such as 5, 3.14, true, "hello"</span></div>
+            <div class="legend-item"><span class="token-type operator">Operator</span><span>Symbols that compute or compare, such as +, =, &lt;=, -&gt;</span></div>
+            <div class="legend-item"><span class="token-type delimiter">Delimiter</span><span>Structure symbols such as ( ) { } ; , :</span></div>
+        </div>
+        <p class="token-note">Compiler-specific names like LPAREN and LTE are just precise internal labels. LPAREN means "(" and belongs to the Delimiter category. LTE means "&lt;=" and belongs to the Operator category. The <strong>Regex Pattern</strong> column shows the formal language pattern that matches this token type.</p>
         <table class="token-table">
-            <thead><tr><th>#</th><th>Type</th><th>Value</th><th>Line</th><th>Col</th></tr></thead>
+            <thead><tr><th>#</th><th>Compiler Token</th><th>Class Category</th><th>Value</th><th>Regex Pattern</th><th>Meaning</th><th>Line</th><th>Col</th></tr></thead>
             <tbody>
     `;
 
-    tokens.forEach((token, i) => {
+    visibleTokens.forEach((token, i) => {
         const cls = getTokenClass(token.type);
+        const category = categoryLabels[cls] || 'Special';
+        const meaning = tokenMeanings[token.type] || formatTypeName(token.type);
+        const regex = getTokenRegex(token.type);
         html += `<tr>
             <td style="color: var(--text-muted)">${i + 1}</td>
             <td><span class="token-type ${cls}">${token.type}</span></td>
+            <td>${category}</td>
             <td>${escapeHtml(token.value)}</td>
+            <td style="color: var(--text-primary); font-family: monospace; font-size: 0.75rem; background: rgba(255,255,255,0.03); padding: 2px 4px; border-radius: 2px;">${escapeHtml(regex)}</td>
+            <td style="color: var(--text-secondary)">${escapeHtml(meaning)}</td>
             <td style="color: var(--text-muted)">${token.line}</td>
             <td style="color: var(--text-muted)">${token.column}</td>
         </tr>`;

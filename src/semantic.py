@@ -69,6 +69,22 @@ class SemanticAnalyzer:
         """Record a semantic error."""
         self.errors.append(SemanticError(message, line, column))
 
+    def _is_scalar_type(self, type_name: Optional[str]) -> bool:
+        """Return whether the type is a non-array scalar type."""
+        return type_name in ('int', 'float', 'bool', 'string')
+
+    def _types_compatible(self, expected: Optional[str], actual: Optional[str]) -> bool:
+        """Check whether a value of type actual can be used where expected is required."""
+        if not expected or not actual:
+            return False
+        if expected == actual:
+            return True
+        if expected == 'float' and actual == 'int':
+            return True
+        if actual == 'input' and self._is_scalar_type(expected):
+            return True
+        return False
+
     # ──────────────────────────── FUNCTION ANALYSIS ────────────────────────────
 
     def _analyze_function(self, func: FunctionNode):
@@ -112,6 +128,11 @@ class SemanticAnalyzer:
                 else_returns = stmt.else_block and self._has_return(stmt.else_block)
                 if then_returns and else_returns:
                     return True
+            if isinstance(stmt, WhileNode):
+                # while (true) { return ...; } always returns
+                if isinstance(stmt.condition, BoolNode) and stmt.condition.value is True:
+                    if self._has_return(stmt.body):
+                        return True
         return False
 
     # ──────────────────────────── STATEMENT ANALYSIS ───────────────────────────
@@ -145,13 +166,11 @@ class SemanticAnalyzer:
         # Check initializer type if present
         if node.initializer:
             init_type = self._analyze_expression(node.initializer)
-            if init_type and init_type != node.var_type:
-                # Allow int -> float promotion
-                if not (node.var_type == 'float' and init_type == 'int'):
-                    self._error(
-                        f"Cannot assign {init_type} to variable '{node.name}' of type {node.var_type}",
-                        node.line, node.column
-                    )
+            if init_type and not self._types_compatible(node.var_type, init_type):
+                self._error(
+                    f"Cannot assign {init_type} to variable '{node.name}' of type {node.var_type}",
+                    node.line, node.column
+                )
 
         # Define the variable in current scope
         try:
@@ -171,12 +190,11 @@ class SemanticAnalyzer:
         value_type = self._analyze_expression(node.value)
 
         if target_type and value_type:
-            if target_type != value_type:
-                if not (target_type == 'float' and value_type == 'int'):
-                    self._error(
-                        f"Cannot assign {value_type} to {target_type}",
-                        node.line, node.column
-                    )
+            if not self._types_compatible(target_type, value_type):
+                self._error(
+                    f"Cannot assign {value_type} to {target_type}",
+                    node.line, node.column
+                )
 
         # Ensure target is assignable (identifier or array access)
         if not isinstance(node.target, (IdentifierNode, ArrayAccessNode)):
@@ -247,12 +265,11 @@ class SemanticAnalyzer:
                     "Cannot return a value from void function",
                     node.line, node.column
                 )
-            elif actual and actual != expected:
-                if not (expected == 'float' and actual == 'int'):
-                    self._error(
-                        f"Expected return type {expected}, got {actual}",
-                        node.line, node.column
-                    )
+            elif actual and not self._types_compatible(expected, actual):
+                self._error(
+                    f"Expected return type {expected}, got {actual}",
+                    node.line, node.column
+                )
         elif expected != 'void':
             self._error(
                 f"Function '{self.current_function.name}' must return {expected}",
@@ -304,7 +321,7 @@ class SemanticAnalyzer:
             result_type = self._analyze_array_access(node)
 
         elif isinstance(node, InputNode):
-            result_type = 'string'
+            result_type = 'input'
 
         node.resolved_type = result_type
         return result_type
@@ -410,12 +427,11 @@ class SemanticAnalyzer:
         # Check argument types
         for i, (arg, expected_type) in enumerate(zip(node.arguments, sym.params)):
             arg_type = self._analyze_expression(arg)
-            if arg_type and arg_type != expected_type:
-                if not (expected_type == 'float' and arg_type == 'int'):
-                    self._error(
-                        f"Argument {i + 1} of '{node.name}': expected {expected_type}, got {arg_type}",
-                        arg.line, arg.column
-                    )
+            if arg_type and not self._types_compatible(expected_type, arg_type):
+                self._error(
+                    f"Argument {i + 1} of '{node.name}': expected {expected_type}, got {arg_type}",
+                    arg.line, arg.column
+                )
 
         return sym.return_type
 

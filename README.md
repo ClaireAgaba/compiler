@@ -39,6 +39,16 @@ python main.py run examples/fibonacci.mini
 python main.py all examples/factorial.mini
 ```
 
+### Run lexical edge-case demo
+```bash
+python main.py tokens examples/lexical_edge_cases.mini
+```
+
+### Run lexer edge-case tests
+```bash
+python -m unittest tests/test_lexer_edge_cases.py
+```
+
 ### Start the web visualizer
 ```bash
 python server.py

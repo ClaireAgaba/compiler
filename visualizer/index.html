@@ -26,6 +26,7 @@
                 <option value="factorial">Factorial</option>
                 <option value="calculator">Calculator</option>
                 <option value="simple">Simple Demo</option>
+                <option value="inputDemo">Input Demo</option>
             </select>
             <button id="btn-compile" class="btn btn-primary">
                 <span class="btn-icon">▶</span> Compile & Run
@@ -45,6 +46,11 @@
             <div class="editor-wrapper">
                 <div class="line-numbers" id="line-numbers"></div>
                 <textarea id="source-editor" spellcheck="false" placeholder="Write your MiniLang code here..."></textarea>
+            </div>
+            <div class="runtime-input-panel">
+                <label for="runtime-inputs">Runtime Inputs</label>
+                <textarea id="runtime-inputs" spellcheck="false" placeholder="Optional: one input value per line&#10;Example for x * 5 - 2:&#10;7"></textarea>
+                <p>Each line is consumed by one <code>input()</code> call, in order.</p>
             </div>
         </section>
 

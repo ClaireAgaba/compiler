@@ -81,6 +81,9 @@ class VisualizerHandler(SimpleHTTPRequestHandler):
             stages = compiler.compile_step_by_step(source)
 
             vm = VM(stages['bytecode'], stages['functions'], trace=True)
+            vm.input_callback = lambda: (_ for _ in ()).throw(
+                CompilerError("Program requested input(), but no runtime input values were provided.")
+            )
             output = vm.run(inputs)
 
             result = compiler.stages_to_json(stages)
