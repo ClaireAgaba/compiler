@@ -1,0 +1,81 @@
+// MiniLang: Simple Calculator
+// Demonstrates: variables, arithmetic, string output, conditionals
+
+func abs(x: int) -> int {
+    if (x < 0) {
+        return 0 - x;
+    }
+    return x;
+}
+
+func max(a: int, b: int) -> int {
+    if (a > b) {
+        return a;
+    }
+    return b;
+}
+
+func min(a: int, b: int) -> int {
+    if (a < b) {
+        return a;
+    }
+    return b;
+}
+
+func power(base: int, exp: int) -> int {
+    var result: int = 1;
+    var i: int = 0;
+    while (i < exp) {
+        result = result * base;
+        i = i + 1;
+    }
+    return result;
+}
+
+func main() -> void {
+    var a: int = 15;
+    var b: int = 7;
+
+    print("Calculator Demo:");
+    print("a = 15, b = 7");
+
+    print("a + b =");
+    print(a + b);
+
+    print("a - b =");
+    print(a - b);
+
+    print("a * b =");
+    print(a * b);
+
+    print("a / b =");
+    print(a / b);
+
+    print("a % b =");
+    print(a % b);
+
+    print("max(a, b) =");
+    print(max(a, b));
+
+    print("min(a, b) =");
+    print(min(a, b));
+
+    print("abs(-42) =");
+    print(abs(0 - 42));
+
+    print("power(2, 10) =");
+    print(power(2, 10));
+
+    // Boolean logic
+    var x: bool = true;
+    var y: bool = false;
+
+    print("true and false =");
+    print(x and y);
+
+    print("true or false =");
+    print(x or y);
+
+    print("not true =");
+    print(not x);
+}

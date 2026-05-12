@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiniLang Compiler Visualizer</title>
+    <meta name="description" content="Interactive compiler stage visualizer for MiniLang — step through lexing, parsing, semantic analysis, IR generation, optimization, code generation, and VM execution.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Header -->
+    <header id="app-header">
+        <div class="header-left">
+            <div class="logo">
+                <span class="logo-icon">⚙</span>
+                <h1>MiniLang <span class="highlight">Compiler</span></h1>
+            </div>
+            <span class="badge">All 7 Stages</span>
+        </div>
+        <div class="header-right">
+            <select id="example-select">
+                <option value="">Load Example...</option>
+                <option value="fibonacci">Fibonacci</option>
+                <option value="factorial">Factorial</option>
+                <option value="calculator">Calculator</option>
+                <option value="simple">Simple Demo</option>
+            </select>
+            <button id="btn-compile" class="btn btn-primary">
+                <span class="btn-icon">▶</span> Compile & Run
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Layout -->
+    <main id="app-main">
+        <!-- Source Editor -->
+        <section id="editor-panel" class="panel">
+            <div class="panel-header">
+                <span class="panel-icon">📝</span>
+                <h2>Source Code</h2>
+                <span class="panel-badge">.mini</span>
+            </div>
+            <div class="editor-wrapper">
+                <div class="line-numbers" id="line-numbers"></div>
+                <textarea id="source-editor" spellcheck="false" placeholder="Write your MiniLang code here..."></textarea>
+            </div>
+        </section>
+
+        <!-- Stage Tabs & Output -->
+        <section id="output-panel" class="panel">
+            <div class="panel-header">
+                <span class="panel-icon">🔍</span>
+                <h2>Compiler Stages</h2>
+            </div>
+
+            <!-- Stage Navigation -->
+            <nav id="stage-tabs">
+                <button class="stage-tab active" data-stage="tokens">
+                    <span class="stage-num">1</span>
+                    <span class="stage-name">Tokens</span>
+                </button>
+                <span class="stage-arrow">→</span>
+                <button class="stage-tab" data-stage="ast">
+                    <span class="stage-num">2</span>
+                    <span class="stage-name">AST</span>
+                </button>
+                <span class="stage-arrow">→</span>
+                <button class="stage-tab" data-stage="symbols">
+                    <span class="stage-num">3</span>
+                    <span class="stage-name">Semantic</span>
+                </button>
+                <span class="stage-arrow">→</span>
+                <button class="stage-tab" data-stage="tac">
+                    <span class="stage-num">4</span>
+                    <span class="stage-name">IR (TAC)</span>
+                </button>
+                <span class="stage-arrow">→</span>
+                <button class="stage-tab" data-stage="optimized">
+                    <span class="stage-num">5</span>
+                    <span class="stage-name">Optimizer</span>
+                </button>
+                <span class="stage-arrow">→</span>
+                <button class="stage-tab" data-stage="bytecode">
+                    <span class="stage-num">6</span>
+                    <span class="stage-name">Bytecode</span>
+                </button>
+                <span class="stage-arrow">→</span>
+                <button class="stage-tab" data-stage="output">
+                    <span class="stage-num">7</span>
+                    <span class="stage-name">Output</span>
+                </button>
+            </nav>
+
+            <!-- Stage Content -->
+            <div id="stage-content">
+                <div id="stage-placeholder" class="placeholder">
+                    <div class="placeholder-icon">⚙</div>
+                    <p>Write some MiniLang code and click <strong>Compile & Run</strong></p>
+                    <p class="placeholder-sub">Or load an example from the dropdown above</p>
+                </div>
+
+                <div id="stage-tokens" class="stage-view" style="display:none;"></div>
+                <div id="stage-ast" class="stage-view" style="display:none;"></div>
+                <div id="stage-symbols" class="stage-view" style="display:none;"></div>
+                <div id="stage-tac" class="stage-view" style="display:none;"></div>
+                <div id="stage-optimized" class="stage-view" style="display:none;"></div>
+                <div id="stage-bytecode" class="stage-view" style="display:none;"></div>
+                <div id="stage-output" class="stage-view" style="display:none;"></div>
+            </div>
+
+            <!-- Error Display -->
+            <div id="error-display" style="display:none;"></div>
+        </section>
+    </main>
+
+    <!-- Pipeline Diagram (Footer) -->
+    <footer id="pipeline-diagram">
+        <div class="pipeline">
+            <div class="pipe-stage" data-stage="tokens">
+                <div class="pipe-box">Lexer</div>
+                <div class="pipe-label">Token Stream</div>
+            </div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-stage" data-stage="ast">
+                <div class="pipe-box">Parser</div>
+                <div class="pipe-label">AST</div>
+            </div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-stage" data-stage="symbols">
+                <div class="pipe-box">Semantic</div>
+                <div class="pipe-label">Types</div>
+            </div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-stage" data-stage="tac">
+                <div class="pipe-box">IR Gen</div>
+                <div class="pipe-label">TAC</div>
+            </div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-stage" data-stage="optimized">
+                <div class="pipe-box">Optimize</div>
+                <div class="pipe-label">Opt TAC</div>
+            </div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-stage" data-stage="bytecode">
+                <div class="pipe-box">CodeGen</div>
+                <div class="pipe-label">Bytecode</div>
+            </div>
+            <div class="pipe-arrow">→</div>
+            <div class="pipe-stage" data-stage="output">
+                <div class="pipe-box">VM</div>
+                <div class="pipe-label">Output</div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
