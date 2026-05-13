@@ -38,8 +38,11 @@ class Optimizer:
         result = self._constant_folding(result)
         result = self._constant_propagation(result)
         result = self._strength_reduction(result)
+        result = self._constant_propagation(result)
+        result = self._copy_propagation(result)
         result = self._dead_code_elimination(result)
         result = self._common_subexpression_elimination(result)
+        result = self._dead_code_elimination(result)
 
         self.report.append(f"Total: {original_count} → {len(result)} instructions")
         return result, self.report
@@ -102,7 +105,7 @@ class Optimizer:
                 constants.clear()
 
             # Replace uses of known constants
-            if instr.op not in ('LABEL', 'GOTO', 'FUNC_BEGIN', 'FUNC_END', 'ASSIGN'):
+            if instr.op not in ('LABEL', 'GOTO', 'FUNC_BEGIN', 'FUNC_END'):
                 if instr.arg1 and str(instr.arg1) in constants:
                     instr.arg1 = constants[str(instr.arg1)]
                     count += 1
@@ -141,6 +144,31 @@ class Optimizer:
         self.report.append(f"Dead Code Elimination: {count} instructions removed")
         return result
 
+    def _copy_propagation(self, instructions: List[TACInstruction]) -> List[TACInstruction]:
+        """Propagate simple variable-to-variable copies through later uses."""
+        count = 0
+        copies: Dict[str, str] = {}
+
+        for instr in instructions:
+            if instr.op in ('LABEL', 'FUNC_BEGIN', 'GOTO', 'IF_FALSE', 'IF_TRUE'):
+                copies.clear()
+
+            if instr.op not in ('LABEL', 'GOTO', 'FUNC_BEGIN', 'FUNC_END'):
+                if instr.arg1 and isinstance(instr.arg1, str) and instr.arg1 in copies:
+                    instr.arg1 = copies[instr.arg1]
+                    count += 1
+                if instr.arg2 and isinstance(instr.arg2, str) and instr.arg2 in copies:
+                    instr.arg2 = copies[instr.arg2]
+                    count += 1
+
+            if instr.op == 'ASSIGN' and instr.result and isinstance(instr.arg1, str) and not self._is_literal(instr.arg1):
+                copies[instr.result] = copies.get(instr.arg1, instr.arg1)
+            elif instr.result:
+                copies.pop(instr.result, None)
+
+        self.report.append(f"Copy Propagation: {count} replacements")
+        return instructions
+
     def _common_subexpression_elimination(self, instructions: List[TACInstruction]) -> List[TACInstruction]:
         """Reuse previously computed expressions."""
         count = 0
@@ -169,16 +197,27 @@ class Optimizer:
         count = 0
         for instr in instructions:
             if instr.op == '*':
-                val = self._try_numeric(instr.arg2)
-                if val == 2:
+                left_val = self._try_numeric(instr.arg1)
+                right_val = self._try_numeric(instr.arg2)
+                if right_val == 2:
                     instr.op = '+'
                     instr.arg2 = instr.arg1
                     count += 1
-                elif val == 1:
+                elif left_val == 2:
+                    instr.op = '+'
+                    instr.arg1 = instr.arg2
+                    count += 1
+                elif right_val == 1:
                     instr.op = 'ASSIGN'
+                    instr.arg1 = instr.arg1
                     instr.arg2 = None
                     count += 1
-                elif val == 0:
+                elif left_val == 1:
+                    instr.op = 'ASSIGN'
+                    instr.arg1 = instr.arg2
+                    instr.arg2 = None
+                    count += 1
+                elif right_val == 0 or left_val == 0:
                     instr.op = 'ASSIGN'
                     instr.arg1 = '0'
                     instr.arg2 = None
@@ -191,6 +230,16 @@ class Optimizer:
                 elif self._try_numeric(instr.arg1) == 0:
                     instr.op = 'ASSIGN'
                     instr.arg1 = instr.arg2
+                    instr.arg2 = None
+                    count += 1
+            elif instr.op == '-':
+                if self._try_numeric(instr.arg2) == 0:
+                    instr.op = 'ASSIGN'
+                    instr.arg2 = None
+                    count += 1
+            elif instr.op == '/':
+                if self._try_numeric(instr.arg2) == 1:
+                    instr.op = 'ASSIGN'
                     instr.arg2 = None
                     count += 1
 

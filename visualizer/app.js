@@ -571,6 +571,7 @@ function renderTokens(view) {
 
 function renderAST(view) {
     const ast = compiledData.ast;
+    const astTreeHtml = buildAstTreeHtml(ast);
     const metadata = compiledData.parsing_metadata || {};
     const grammarRules = metadata.grammar_rules || [];
     const isSyntaxFailure = compiledData.partial && compiledData.failed_stage === 'syntax';
@@ -630,8 +631,8 @@ Next step: ${escapeHtml(nextStepText)}
         </div>
 
         <div style="margin-bottom: 16px;">
-            <h4 style="margin-bottom: 8px; color: var(--text-secondary); font-size: 0.9rem;">Abstract Syntax Tree</h4>
-            <div class="code-block">${highlightAST(escapeHtml(ast))}</div>
+            <h4 style="margin-bottom: 8px; color: var(--text-secondary); font-size: 0.9rem;">Abstract Syntax Tree (Diagram)</h4>
+            ${astTreeHtml}
         </div>
     `;
 }
@@ -865,6 +866,47 @@ Next step: ${escapeHtml(nextStepText)}
 // ════════════════════════════════════════════════════════════════
 // SYNTAX HIGHLIGHTING HELPERS
 // ════════════════════════════════════════════════════════════════
+
+function buildAstTreeHtml(astText) {
+    if (!astText || astText === 'Unavailable') {
+        return '<div class="code-block" style="color: var(--text-muted); font-style: italic;">No AST available.</div>';
+    }
+
+    const lines = String(astText)
+        .split('\n')
+        .filter(line => line.trim().length > 0);
+
+    if (lines.length === 0) {
+        return '<div class="code-block" style="color: var(--text-muted); font-style: italic;">No AST available.</div>';
+    }
+
+    const root = { text: '', children: [] };
+    const stack = [root];
+
+    lines.forEach(line => {
+        const indent = (line.match(/^\s*/) || [''])[0].length;
+        const level = Math.floor(indent / 2);
+        const node = { text: line.trim(), children: [] };
+
+        while (stack.length - 1 > level) {
+            stack.pop();
+        }
+
+        const parent = stack[stack.length - 1] || root;
+        parent.children.push(node);
+        stack.push(node);
+    });
+
+    function renderNode(node) {
+        const label = highlightAST(escapeHtml(node.text));
+        const children = node.children.length > 0
+            ? `<ul>${node.children.map(renderNode).join('')}</ul>`
+            : '';
+        return `<li><span class="ast-tree-node">${label}</span>${children}</li>`;
+    }
+
+    return `<div class="ast-tree-wrap"><ul class="ast-tree">${root.children.map(renderNode).join('')}</ul></div>`;
+}
 
 function highlightAST(text) {
     return text

@@ -557,6 +557,69 @@ body {
 .code-block .label { color: var(--accent-orange); font-weight: 600; }
 .code-block .comment { color: var(--text-muted); font-style: italic; }
 
+.ast-tree-wrap {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    overflow-x: auto;
+}
+
+.ast-tree,
+.ast-tree ul {
+    list-style: none;
+    margin: 0;
+    padding-left: 18px;
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+}
+
+.ast-tree {
+    padding-left: 0;
+}
+
+.ast-tree li {
+    position: relative;
+    margin: 4px 0;
+    padding-left: 14px;
+}
+
+.ast-tree li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0.78em;
+    width: 10px;
+    border-top: 1px solid var(--border-color);
+}
+
+.ast-tree li::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: -6px;
+    bottom: -6px;
+    border-left: 1px solid var(--border-color);
+}
+
+.ast-tree > li::after {
+    top: 0.78em;
+}
+
+.ast-tree li:last-child::after {
+    bottom: calc(100% - 0.78em);
+}
+
+.ast-tree-node {
+    display: inline-block;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+    color: var(--text-primary);
+}
+
 /* Stage 2 parser pedagogy blocks */
 .parser-callout {
     background: linear-gradient(180deg, rgba(88, 166, 255, 0.12), rgba(88, 166, 255, 0.05));
